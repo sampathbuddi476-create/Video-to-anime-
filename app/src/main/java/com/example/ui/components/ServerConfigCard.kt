@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -22,12 +23,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +39,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,6 +55,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.PollingInterval
 import com.example.ui.ServerConnectionState
 import com.example.ui.theme.AnimeCrimson
 import com.example.ui.theme.DarkSurface
@@ -56,17 +65,23 @@ import com.example.ui.theme.LightText
 import com.example.ui.theme.OutlineDark
 import com.example.ui.theme.StatusGreen
 import com.example.ui.theme.StatusGrey
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun ServerConfigCard(
     serverUrl: String,
     connectionState: ServerConnectionState,
+    pollingInterval: PollingInterval,
     onUrlChange: (String) -> Unit,
     onConnectClick: () -> Unit,
+    onPollingIntervalChange: (PollingInterval) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+    var showPollingSettings by remember { mutableStateOf(false) }
 
     Card(
         modifier = modifier
@@ -186,14 +201,31 @@ fun ServerConfigCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = "Paste Cloudflare / Ngrok tunnel from notebook",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = DimText,
-                        fontSize = 11.sp
-                    ),
+                // Background polling toggle / status
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
-                )
+                ) {
+                    IconButton(
+                        onClick = { showPollingSettings = !showPollingSettings },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Schedule,
+                            contentDescription = "Background polling settings",
+                            tint = if (pollingInterval != PollingInterval.OFF) AnimeCrimson else DimText,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = if (pollingInterval == PollingInterval.OFF) "Poll: Off" else "Poll: every ${pollingInterval.minutes}m",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = DimText,
+                            fontSize = 11.sp
+                        )
+                    )
+                }
 
                 Button(
                     onClick = {
@@ -233,6 +265,51 @@ fun ServerConfigCard(
                 }
             }
 
+            // Polling interval selector collapsible chips
+            AnimatedVisibility(visible = showPollingSettings) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(DarkSurfaceContainer)
+                        .padding(10.dp)
+                ) {
+                    Text(
+                        text = "Background Health Polling (GET /):",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = LightText,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        PollingInterval.values().forEach { interval ->
+                            val isSelected = interval == pollingInterval
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { onPollingIntervalChange(interval) },
+                                label = {
+                                    Text(
+                                        text = interval.label.replace(" (Default)", ""),
+                                        fontSize = 11.sp
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = AnimeCrimson,
+                                    selectedLabelColor = Color.White,
+                                    containerColor = DarkSurface,
+                                    labelColor = DimText
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
             if (connectionState is ServerConnectionState.Error) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
@@ -253,11 +330,14 @@ fun ConnectionStatusPill(
     modifier: Modifier = Modifier
 ) {
     val (dotColor, text, subtext) = when (connectionState) {
-        is ServerConnectionState.Connected -> Triple(
-            StatusGreen,
-            "Online",
-            "${connectionState.latencyMs}ms"
-        )
+        is ServerConnectionState.Connected -> {
+            val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(connectionState.lastCheckedAt))
+            Triple(
+                StatusGreen,
+                "Online",
+                "${connectionState.latencyMs}ms • $timeStr"
+            )
+        }
         is ServerConnectionState.Checking -> Triple(
             AnimeCrimson,
             "Checking...",

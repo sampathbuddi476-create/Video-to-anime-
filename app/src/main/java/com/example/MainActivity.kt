@@ -33,6 +33,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -58,6 +60,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.ProcessingState
 import com.example.ui.ServerConnectionState
 import com.example.ui.TitanAnimeViewModel
+import com.example.ui.UiEvent
 import com.example.ui.components.CachedClipsSection
 import com.example.ui.components.ResultPlayerCard
 import com.example.ui.components.ServerConfigCard
@@ -103,10 +106,22 @@ fun TitanAnimeScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var showHelpDialog by remember { mutableStateOf(false) }
 
-    // Toast/Snackbar notifications
+    // Unified UI event listener for Snackbars and Toasts
     LaunchedEffect(Unit) {
-        viewModel.toastEvents.collectLatest { message ->
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        viewModel.uiEvents.collectLatest { event ->
+            when (event) {
+                is UiEvent.ShowSnackbar -> {
+                    snackbarHostState.currentSnackbarData?.dismiss()
+                    snackbarHostState.showSnackbar(
+                        message = event.message,
+                        actionLabel = event.actionLabel,
+                        duration = if (event.isError) SnackbarDuration.Long else SnackbarDuration.Short
+                    )
+                }
+                is UiEvent.ShowToast -> {
+                    Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
@@ -116,7 +131,17 @@ fun TitanAnimeScreen(
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = DarkCharcoal,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            SnackbarHost(snackbarHostState) { snackbarData ->
+                Snackbar(
+                    snackbarData = snackbarData,
+                    containerColor = DarkSurface,
+                    contentColor = LightText,
+                    actionColor = AnimeCrimson,
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+        },
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
@@ -124,7 +149,7 @@ fun TitanAnimeScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        // Brand eye icon badge
+                        // Brand emblem badge
                         Box(
                             modifier = Modifier
                                 .size(28.dp)
@@ -153,7 +178,7 @@ fun TitanAnimeScreen(
 
                         Spacer(modifier = Modifier.width(10.dp))
 
-                        // Status dot indicator: Green = Connected, Grey = Not Connected
+                        // Status dot indicator updated in real-time by periodic background polling
                         TopBarStatusIndicator(isOnline = isServerConnected)
                     }
                 },
@@ -183,27 +208,31 @@ fun TitanAnimeScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 1. Server URL Card
+            // 1. Server URL Card (with configurable background health polling)
             item {
                 ServerConfigCard(
                     serverUrl = uiState.serverUrl,
                     connectionState = uiState.connectionState,
+                    pollingInterval = uiState.pollingInterval,
                     onUrlChange = { viewModel.onServerUrlChange(it) },
-                    onConnectClick = { viewModel.checkConnection() }
+                    onConnectClick = { viewModel.checkConnection() },
+                    onPollingIntervalChange = { viewModel.setPollingInterval(it) }
                 )
             }
 
-            // 2. Video Picker Card
+            // 2. Video Picker Card (with client-side video compression options)
             item {
                 VideoPickerCard(
                     selectedVideo = uiState.selectedVideo,
                     isResolving = uiState.isResolvingVideo,
+                    compressionQuality = uiState.compressionQuality,
                     onVideoSelected = { viewModel.onVideoSelected(it) },
-                    onClearVideo = { viewModel.clearSelectedVideo() }
+                    onClearVideo = { viewModel.clearSelectedVideo() },
+                    onCompressionQualityChange = { viewModel.setCompressionQuality(it) }
                 )
             }
 
-            // 3. Convert CTA & Progress Section
+            // 3. Convert CTA & Progress Section (showing compression, upload, GPU, and download)
             item {
                 StylizeProgressSection(
                     isServerOnline = isServerConnected,
@@ -332,7 +361,7 @@ fun ColabHelpDialog(onDismiss: () -> Unit) {
                         .padding(10.dp)
                 ) {
                     Text(
-                        text = "1. GET  /         -> 200 OK\n2. POST /stylize  -> form-data 'video'\n   Returns: stylized anime .mp4 binary",
+                        text = "1. GET  /         -> 200 OK (health check)\n2. POST /stylize  -> form-data 'video'\n   Returns: stylized anime .mp4 binary",
                         fontFamily = FontFamily.Monospace,
                         color = AnimeCrimson,
                         fontSize = 11.sp
@@ -340,7 +369,7 @@ fun ColabHelpDialog(onDismiss: () -> Unit) {
                 }
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "Timeouts are pre-configured up to 300s to support heavy frame-by-frame PyTorch rendering.",
+                    text = "Timeouts are configured up to 300s to support heavy frame-by-frame PyTorch rendering. Video compression optimizes upload speed and backend rendering time.",
                     color = DimText,
                     fontSize = 12.sp
                 )

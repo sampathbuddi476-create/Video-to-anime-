@@ -25,66 +25,84 @@ data class SelectedVideoInfo(
 object VideoUtils {
 
     /**
-     * Resolves metadata and creates a local working file from a content Uri
+     * Resolves metadata and creates a local working file from a content Uri with full error safety
      */
-    suspend fun resolveVideoInfo(context: Context, uri: Uri): SelectedVideoInfo = withContext(Dispatchers.IO) {
-        var name = "video_${System.currentTimeMillis()}.mp4"
-        var size: Long = 0
-
-        // Query ContentResolver for name and size
+    suspend fun resolveVideoInfo(context: Context, uri: Uri): Result<SelectedVideoInfo> = withContext(Dispatchers.IO) {
         try {
-            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
-                if (cursor.moveToFirst()) {
-                    if (nameIndex != -1) {
-                        cursor.getString(nameIndex)?.let { name = it }
-                    }
-                    if (sizeIndex != -1) {
-                        size = cursor.getLong(sizeIndex)
-                    }
-                }
-            }
-        } catch (_: Exception) {}
+            var name = "video_${System.currentTimeMillis()}.mp4"
+            var size: Long = 0
 
-        // Copy uri stream to a cache file so we have direct file access for OkHttp
-        val tempInputFile = File(context.cacheDir, "source_input_${System.currentTimeMillis()}.mp4")
-        try {
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                FileOutputStream(tempInputFile).use { output ->
-                    input.copyTo(output)
-                }
-            }
-            if (size == 0L && tempInputFile.exists()) {
-                size = tempInputFile.length()
-            }
-        } catch (_: Exception) {}
-
-        // Query duration via MediaMetadataRetriever
-        var durationMs: Long = 0
-        val retriever = MediaMetadataRetriever()
-        try {
-            if (tempInputFile.exists() && tempInputFile.length() > 0) {
-                retriever.setDataSource(tempInputFile.absolutePath)
-            } else {
-                retriever.setDataSource(context, uri)
-            }
-            val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-            durationMs = durationStr?.toLongOrNull() ?: 0L
-        } catch (_: Exception) {
-        } finally {
+            // Query ContentResolver for name and size
             try {
-                retriever.release()
+                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    if (cursor.moveToFirst()) {
+                        if (nameIndex != -1) {
+                            cursor.getString(nameIndex)?.let { name = it }
+                        }
+                        if (sizeIndex != -1) {
+                            size = cursor.getLong(sizeIndex)
+                        }
+                    }
+                }
             } catch (_: Exception) {}
-        }
 
-        SelectedVideoInfo(
-            uri = uri,
-            fileName = name,
-            durationMs = durationMs,
-            fileSizeBytes = size,
-            localFile = tempInputFile
-        )
+            // Copy uri stream to a cache file so we have direct file access for OkHttp / Transformer
+            val tempInputFile = File(context.cacheDir, "source_input_${System.currentTimeMillis()}.mp4")
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                    ?: return@withContext Result.failure(
+                        AppError.FileAccessError("Unable to open input stream for selected video.")
+                    )
+
+                inputStream.use { input ->
+                    FileOutputStream(tempInputFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+
+                if (size == 0L && tempInputFile.exists()) {
+                    size = tempInputFile.length()
+                }
+            } catch (e: Exception) {
+                return@withContext Result.failure(
+                    AppError.FileAccessError("Failed to cache video: ${e.localizedMessage}")
+                )
+            }
+
+            if (!tempInputFile.exists() || tempInputFile.length() == 0L) {
+                return@withContext Result.failure(
+                    AppError.FileAccessError("Selected video file is empty or corrupted (0 bytes).")
+                )
+            }
+
+            // Query duration via MediaMetadataRetriever
+            var durationMs: Long = 0
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(tempInputFile.absolutePath)
+                val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                durationMs = durationStr?.toLongOrNull() ?: 0L
+            } catch (_: Exception) {
+            } finally {
+                try {
+                    retriever.release()
+                } catch (_: Exception) {}
+            }
+
+            Result.success(
+                SelectedVideoInfo(
+                    uri = uri,
+                    fileName = name,
+                    durationMs = durationMs,
+                    fileSizeBytes = size,
+                    localFile = tempInputFile
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(AppError.fromThrowable(e, "Could not load video clip"))
+        }
     }
 
     /**
@@ -92,56 +110,64 @@ object VideoUtils {
      */
     suspend fun saveVideoToGallery(context: Context, videoFile: File): Result<Uri> = withContext(Dispatchers.IO) {
         if (!videoFile.exists() || videoFile.length() == 0L) {
-            return@withContext Result.failure(IllegalArgumentException("Video file is invalid or missing"))
+            return@withContext Result.failure(
+                AppError.StorageError("Video file to save does not exist or is empty.")
+            )
         }
-
-        val filename = "TitanAnime_${System.currentTimeMillis()}.mp4"
-        val contentValues = ContentValues().apply {
-            put(MediaStore.Video.Media.DISPLAY_NAME, filename)
-            put(MediaStore.Video.Media.TITLE, filename)
-            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-            put(MediaStore.Video.Media.DATE_ADDED, System.currentTimeMillis() / 1000)
-            put(MediaStore.Video.Media.DATE_MODIFIED, System.currentTimeMillis() / 1000)
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/TitanAnime")
-                put(MediaStore.Video.Media.IS_PENDING, 1)
-            }
-        }
-
-        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-        } else {
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-        }
-
-        val contentResolver = context.contentResolver
-        val itemUri = contentResolver.insert(collection, contentValues)
-            ?: return@withContext Result.failure(IllegalStateException("Failed to create MediaStore entry"))
 
         try {
-            contentResolver.openOutputStream(itemUri).use { outputStream ->
-                if (outputStream == null) {
-                    throw IllegalStateException("Failed to open output stream for $itemUri")
+            val filename = "TitanAnime_${System.currentTimeMillis()}.mp4"
+            val contentValues = ContentValues().apply {
+                put(MediaStore.Video.Media.DISPLAY_NAME, filename)
+                put(MediaStore.Video.Media.TITLE, filename)
+                put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                put(MediaStore.Video.Media.DATE_ADDED, System.currentTimeMillis() / 1000)
+                put(MediaStore.Video.Media.DATE_MODIFIED, System.currentTimeMillis() / 1000)
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/TitanAnime")
+                    put(MediaStore.Video.Media.IS_PENDING, 1)
                 }
-                videoFile.inputStream().use { inputStream ->
-                    inputStream.copyTo(outputStream)
-                }
-                outputStream.flush()
             }
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                contentValues.clear()
-                contentValues.put(MediaStore.Video.Media.IS_PENDING, 0)
-                contentResolver.update(itemUri, contentValues, null, null)
+            val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            } else {
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI
             }
 
-            Result.success(itemUri)
-        } catch (e: Exception) {
+            val contentResolver = context.contentResolver
+            val itemUri = contentResolver.insert(collection, contentValues)
+                ?: return@withContext Result.failure(
+                    AppError.StorageError("Failed to allocate MediaStore entry in Gallery.")
+                )
+
             try {
-                contentResolver.delete(itemUri, null, null)
-            } catch (_: Exception) {}
-            Result.failure(e)
+                contentResolver.openOutputStream(itemUri).use { outputStream ->
+                    if (outputStream == null) {
+                        throw IllegalStateException("Failed to open output stream for gallery storage.")
+                    }
+                    videoFile.inputStream().use { inputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                    outputStream.flush()
+                }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    contentValues.clear()
+                    contentValues.put(MediaStore.Video.Media.IS_PENDING, 0)
+                    contentResolver.update(itemUri, contentValues, null, null)
+                }
+
+                Result.success(itemUri)
+            } catch (e: Exception) {
+                try {
+                    contentResolver.delete(itemUri, null, null)
+                } catch (_: Exception) {}
+                Result.failure(AppError.StorageError("Error copying video to gallery: ${e.localizedMessage}", e))
+            }
+        } catch (e: Exception) {
+            Result.failure(AppError.StorageError("Unable to access MediaStore: ${e.localizedMessage}", e))
         }
     }
 

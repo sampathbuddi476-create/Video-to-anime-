@@ -4,7 +4,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Memory
@@ -153,6 +153,7 @@ fun StylizeProgressSection(
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 val stageIcon = when (processingState.stage) {
+                                    is StylizeProgress.Compressing -> Icons.Default.Compress
                                     is StylizeProgress.Uploading -> Icons.Default.CloudUpload
                                     is StylizeProgress.RenderingOnGpu -> Icons.Default.Memory
                                     is StylizeProgress.Downloading -> Icons.Default.Download
@@ -186,6 +187,7 @@ fun StylizeProgressSection(
                                     )
                                     Text(
                                         text = when (processingState.stage) {
+                                            is StylizeProgress.Compressing -> "Transcoding video for fast GPU upload..."
                                             is StylizeProgress.Uploading -> "Streaming clip to remote GPU..."
                                             is StylizeProgress.RenderingOnGpu -> "Running PyTorch neural anime diffusion..."
                                             is StylizeProgress.Downloading -> "Receiving stylized MP4 stream..."

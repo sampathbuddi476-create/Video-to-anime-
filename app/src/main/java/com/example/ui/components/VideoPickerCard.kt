@@ -21,13 +21,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.FilePresent
+import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,13 +41,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.util.SelectedVideoInfo
-import com.example.util.VideoUtils
 import com.example.ui.theme.AnimeCrimson
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.DarkSurfaceContainer
@@ -52,13 +55,18 @@ import com.example.ui.theme.DimText
 import com.example.ui.theme.LightText
 import com.example.ui.theme.MediumText
 import com.example.ui.theme.OutlineDark
+import com.example.util.CompressionQuality
+import com.example.util.SelectedVideoInfo
+import com.example.util.VideoUtils
 
 @Composable
 fun VideoPickerCard(
     selectedVideo: SelectedVideoInfo?,
     isResolving: Boolean,
+    compressionQuality: CompressionQuality,
     onVideoSelected: (android.net.Uri) -> Unit,
     onClearVideo: () -> Unit,
+    onCompressionQualityChange: (CompressionQuality) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -320,6 +328,84 @@ fun VideoPickerCard(
                                 fontSize = 12.sp
                             )
                         }
+                    }
+                }
+            }
+
+            // Compression Selector Section
+            Spacer(modifier = Modifier.height(16.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(DarkSurfaceContainer)
+                    .border(1.dp, OutlineDark, RoundedCornerShape(12.dp))
+                    .padding(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Compress,
+                            contentDescription = "Compression",
+                            tint = AnimeCrimson,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Client Video Compression",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                color = LightText
+                            )
+                        )
+                    }
+
+                    Text(
+                        text = compressionQuality.estimatedSavings,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = AnimeCrimson,
+                            fontSize = 10.sp
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = compressionQuality.description,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = DimText,
+                        fontSize = 11.sp
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    CompressionQuality.values().forEach { quality ->
+                        val isSelected = quality == compressionQuality
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { onCompressionQualityChange(quality) },
+                            label = {
+                                Text(
+                                    text = quality.label.split(" (")[0],
+                                    fontSize = 11.sp
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = AnimeCrimson,
+                                selectedLabelColor = Color.White,
+                                containerColor = DarkSurface,
+                                labelColor = DimText
+                            )
+                        )
                     }
                 }
             }
