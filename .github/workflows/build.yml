@@ -41,7 +41,7 @@ jobs:
       - name: Create .env Configuration
         run: |
           cat << 'EOF' > .env
-          GEMINI_API_KEY=dummy_build_key
+          GEMINI_API_KEY=AQ.Ab8RN6JqvnjifV5wz4M0-2Wa3v...
           EOF
 
       - name: Create Valid google-services.json
@@ -65,7 +65,7 @@ jobs:
                 "oauth_client": [],
                 "api_key": [
                   {
-                    "current_key": "dummy_api_key_for_build"
+                    "current_key": "AQ.Ab8RN6JqvnjifV5wz4M0-2Wa3v..."
                   }
                 ],
                 "services": {
