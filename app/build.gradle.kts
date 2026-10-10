@@ -15,7 +15,7 @@ android {
   defaultConfig {
     applicationId = "com.titan.anime"
     minSdk = 24
-    targetSdk = 35
+    targetSdk = 36
     versionCode = 1
     versionName = "1.0"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -77,8 +77,8 @@ dependencies {
   implementation(libs.androidx.room.runtime)
   implementation(libs.androidx.media3.exoplayer)
   implementation(libs.androidx.media3.ui)
-  implementation(libs.androidx.media3.effect)
-  implementation(libs.androidx.media3.transformer)
+  implementation("androidx.media3:media3-transformer:1.5.1")
+  implementation("androidx.media3:media3-effect:1.5.1")
   implementation(libs.coil.compose)
   implementation(libs.converter.moshi)
   implementation(libs.firebase.ai)
