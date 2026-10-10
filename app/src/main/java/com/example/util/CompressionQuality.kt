@@ -2,27 +2,11 @@ package com.example.util
 
 enum class CompressionQuality(
     val label: String,
-    val description: String,
-    val estimatedSavings: String
+    val estimatedSavings: String,
+    val bitrate: String
 ) {
-    ORIGINAL(
-        label = "Original",
-        description = "No compression. Highest quality, largest file.",
-        estimatedSavings = "0% savings"
-    ),
-    LOW(
-        label = "Low (60%)",
-        description = "Aggressive compression. Fast upload and preview-friendly output.",
-        estimatedSavings = "~60% savings"
-    ),
-    MEDIUM(
-        label = "Medium (40%)",
-        description = "Balanced compression. Recommended for most clips.",
-        estimatedSavings = "~40% savings"
-    ),
-    HIGH(
-        label = "High (20%)",
-        description = "Light compression. Best quality with moderate file reduction.",
-        estimatedSavings = "~20% savings"
-    )
+    ORIGINAL("Original", "No compression", "Original"),
+    LOW("Low (60% reduction)", "~60%", "2M"),
+    MEDIUM("Medium (40% reduction)", "~40%", "4M"),
+    HIGH("High (20% reduction)", "~20%", "6M")
 }
